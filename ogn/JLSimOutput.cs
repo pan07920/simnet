@@ -12,87 +12,59 @@ namespace ogn
 {
     public partial class JLSimOutput : Form
     {
-        //    FormatStr = ";Case Name|";
-        //    FormatStr = FormatStr + "Simulation Length";
-        //    FormatStr = FormatStr + "Number of Securities";
-        //    FormatStr = FormatStr + "Number of Statisticians";
-        //    FormatStr = FormatStr + "Number of Analysts";
-        //    FormatStr = FormatStr + "Types of Investors";
-        //    FormatStr = FormatStr + "Types of Traders";
-        //    FormatStr = FormatStr + "Number of Factors";
-        //    FormatStr = FormatStr + "Number of Days Kept";
-        //    FormatStr = FormatStr + "Number of Months Kept";
-        //    FormatStr = FormatStr + "Max Initial L+abs(S)";
-        //    FormatStr = FormatStr + "Max Maintenance L+abs(S)";
-        //    FormatStr = FormatStr + "Data Source";
-        //    FormatStr = FormatStr + "Uptick Rule";
-        //    FormatStr = FormatStr + "Rebate Fraction";
-        //    FormatStr = FormatStr + "Total Deposits";
-        //    FormatStr = FormatStr + "Number of Deposits";
-        //    FormatStr = FormatStr + "Total Withdrawals";
-        //    FormatStr = FormatStr + "Number of Withdrawals";
-        //    FormatStr = FormatStr + "Last Random Seed";
-        //int g_SimulationLen = Convert.ToInt16(SimLength);
-        // int g_NumSecurites = nSecurities;
-        //int nStatisticians = Convert.ToInt16(Statisticians);
-        //int nTrader = Convert.ToInt16(Trader);
-        //string[] g_eMTOperationMode = { "or that specific specs follow",  };//: X, or : N =>0, else 1
-
-        //private string[] SimLength = { "Length of Simulation (in days)", "Simulation Length" };
-
-        //string[] Securities = {"Securities (other than cash and borrowing)", "Number of Securities"} ;
-
-        //string[] Statisticians = { "   Statisticians", "Number of Statisticians" };
-
-        //string[] Analysts = { "   Portfolio Analysts", "Number of Analysts" };
-        //string[] Investors = { "Investor Templates (types of investors)", "Types of Investors" };
-        //string[] Trader = { "Trader Templates (types of traders)", "Types of Traders" };
-
-        //string[] Factor = { "price series before the start of simulation", "Number of Factors" };
-        //string[] DayKept = { "Nr. of Days Data Kept for statisticians", "Number of Days Kept" };
-        //string[] nMonthsKept = { "Nr. of Months Data Kept for statisticians", "Number of Months Kept" };
-        //string[] mILS = { "Max Initial Sum of Long + |Short|", "Max Initial L+abs(S)" };
-        //string[] mMLS = { "Max Mark-to-Market Sum of Long + |Short|", "Max Maintenance L+abs(S)" };
-        //string[] ds = { "(statisticians use simulation's own history)", "Data Source" };//"Endogenous", "Exogenous"
-        //string[] uptickRule = { "Can only short on uptick?  Y or N", "Uptick Rule"};// N --No else Yes
-        //string[] rebateFraction = { "Short rebate fraction", "Rebate Fraction" };
-        //string[] b = { "TotalDeposits", "Total Deposits" };
-        //string[] d = { "Nr.Deposits", "Number of Deposits" };
-        //string[] c = { "TotalWithdrawals", "Total Withdrawals" };
-        //string[] e = { "Nr.Withdrawals", "Number of Withdrawals" };
-        //string[] a = { "Lastrandomnumberseed", "Last Random Seed" };
-
-        private List<string[]> caseparameters;
-        //SimLength = {
-        //    { "Length of Simulation (in days)", "Simulation Length" }, { "Securities (other than cash and borrowing)", "Number of Securities" };
-
-        string[] Securities = { "Securities (other than cash and borrowing)", "Number of Securities" };
-
-        string[] Statisticians = { "   Statisticians", "Number of Statisticians" };
-
-        string[] Analysts = { "   Portfolio Analysts", "Number of Analysts" };
-        string[] Investors = { "Investor Templates (types of investors)", "Types of Investors" };
-        string[] Trader = { "Trader Templates (types of traders)", "Types of Traders" };
-
-        string[] Factor = { "price series before the start of simulation", "Number of Factors" };
-        string[] DayKept = { "Nr. of Days Data Kept for statisticians", "Number of Days Kept" };
-        string[] nMonthsKept = { "Nr. of Months Data Kept for statisticians", "Number of Months Kept" };
-        string[] mILS = { "Max Initial Sum of Long + |Short|", "Max Initial L+abs(S)" };
-        string[] mMLS = { "Max Mark-to-Market Sum of Long + |Short|", "Max Maintenance L+abs(S)" };
-        string[] ds = { "(statisticians use simulation's own history)", "Data Source" };//"Endogenous", "Exogenous"
-        string[] uptickRule = { "Can only short on uptick?  Y or N", "Uptick Rule" };// N --No else Yes
-        string[] rebateFraction = { "Short rebate fraction", "Rebate Fraction" };
-        string[] b = { "TotalDeposits", "Total Deposits" };
-        string[] d = { "Nr.Deposits", "Number of Deposits" };
-        string[] c = { "TotalWithdrawals", "Total Withdrawals" };
-        string[] e = { "Nr.Withdrawals", "Number of Withdrawals" };
-        string[] a = { "Lastrandomnumberseed", "Last Random Seed" };
-
         public string LastWorkingFolder { get; set; }
+        private List<string[]> GetCaseInputParameters()
+        {
+            List<string[]> list = new List<string[]>();
+            string[] SimLength = { "Length of Simulation (in days)", "Simulation Length" };
+            list.Add(SimLength);
+            string[] Securities = { "Securities (other than cash and borrowing)", "Number of Securities" };
+            list.Add(Securities);
+            string[] Statisticians = { "   Statisticians", "Number of Statisticians" };
+            list.Add(Statisticians);
+            string[] Analysts = { "   Portfolio Analysts", "Number of Analysts" };
+            list.Add(Analysts);
+            string[] Investors = { "Investor Templates (types of investors)", "Types of Investors" };
+            list.Add(Investors);
+            string[] Trader = { "Trader Templates (types of traders)", "Types of Traders" };
+            list.Add(Trader);
+            string[] Factor = { "price series before the start of simulation", "Number of Factors" };
+            list.Add(Factor);
+            string[] DayKept = { "Nr. of Days Data Kept for statisticians", "Number of Days Kept" };
+            list.Add(DayKept);
+            string[] nMonthsKept = { "Nr. of Months Data Kept for statisticians", "Number of Months Kept" };
+            list.Add(nMonthsKept);
+            string[] mILS = { "Max Initial Sum of Long + |Short|", "Max Initial L+abs(S)" };
+            list.Add(mILS);
+            string[] mMLS = { "Max Mark-to-Market Sum of Long + |Short|", "Max Maintenance L+abs(S)" };
+            list.Add(mMLS);
+            string[] ds = { "(statisticians use simulation's own history)", "Data Source" };//"Endogenous", "Exogenous"
+            list.Add(ds);
+            string[] uptickRule = { "Can only short on uptick?  Y or N", "Uptick Rule" };// N --No else Yes
+            list.Add(uptickRule);
+            string[] rebateFraction = { "Short rebate fraction", "Rebate Fraction" };
+            list.Add(rebateFraction);
+            return list;
+        }
+        private List<string[]> GetCaseMessageParameters()
+        {
+            List<string[]> list = new List<string[]>();
+            string[] TD = { "TotalDeposits", "Total Deposits" };
+            list.Add(TD);
+            string[] NoD = { "Nr.Deposits", "Number of Deposits" };
+            list.Add(NoD);
+            string[] TW = { "TotalWithdrawals", "Total Withdrawals" };
+            list.Add(TW);
+            string[] NOW = { "Nr.Withdrawals", "Number of Withdrawals" };
+            list.Add(NOW);
+            string[] LRS = { "Lastrandomnumberseed", "Last Random Seed" };
+            list.Add(LRS);
+            return list;
+        }
+
         public JLSimOutput()
         {
-            caseparameters = new List<string[]>();
-            caseparameters.Add()
+         
             InitializeComponent();
         }
 
@@ -143,6 +115,8 @@ namespace ogn
         }
         private void LoadSummary()
         {
+            listViewCaseSummary.Items.Clear();
+
             if (listBoxCases.SelectedIndex < 0)
                 return;
             string prefixInput = "JLMSimInput for Case ";
@@ -150,22 +124,51 @@ namespace ogn
             string casename = listBoxCases.SelectedItem.ToString();
             string caseinputfile = textBoxFolder.Text + @"\" + prefixInput + casename + ".txt";
             string casemessagefile = textBoxFolder.Text + @"\" + prefixMessage + casename + ".csv";
-            //string[] linesInput = File.ReadAllLines(caseinputfile);
+
+            string[] rowfirst = { "Case Name", casename };
+            var listviewitemfirst = new ListViewItem(rowfirst);
+            listViewCaseSummary.Items.Add(listviewitemfirst);
+
             List<string> inputlines = File.ReadAllLines(caseinputfile).ToList<string>();
             List<string> linemessagelines = File.ReadAllLines(caseinputfile).ToList<string>();
-            
 
-            string val = inputlines.Find(delegate (string s ){ return s.Contains(SimLength[0]); }).Split(':').ToList<string>()[1].Trim();
-            string[] row = { this.SimLength[1], val };
-            var listviewitem = new ListViewItem(row);
-            listViewCaseSummary.Items.Add(listviewitem);
+            List<string[]> frominput = GetCaseInputParameters();
+            List<string[]> fromMessage = GetCaseMessageParameters();
+
+            foreach (string[] param in frominput)
+            {
+                string val = inputlines.Find(delegate (string s) { return s.Contains(param[0]); });
+                if (val == null)
+                    val = "";
+                else
+                {
+                    val = val.Split(':').ToList<string>()[1].Trim();
+                }
+                string[] row = { param[1], val };
+                var listviewitem = new ListViewItem(row);
+                listViewCaseSummary.Items.Add(listviewitem);
+            }
+
+            foreach (string[] param in fromMessage)
+            {
+                string val = linemessagelines.Find(delegate (string s) { return s.Contains(param[0]); });
+                if (val == null)
+                    val = "";
+                else
+                {
+                    val = val.Split(':').ToList<string>()[1].Trim();
+                }
+                string[] row = { param[1], val };
+                var listviewitem = new ListViewItem(row);
+                listViewCaseSummary.Items.Add(listviewitem);
+            }
 
 
-           
+
             //var SimulationLenth = from line in lines
             //                      where line.Contains("Length of Simulation (in days)")
             //                      select (line.Split(':').ToList<string>()[1]).Single();
-            
+
             //string NumOfSecurities = "";
 
             //    // Declarations.
@@ -252,7 +255,7 @@ namespace ogn
             //string[] d = "Nr.Deposits";
             //string[] e = "Nr.Withdrawals";
 
-           
+
             //    }
             //    //UPGRADE_NOTE: Object TStream may not be destroyed until it is garbage collected. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6E35BFF6-CD74-4B09-9689-3E1A43DF8969"'
             //    TStream = null;
@@ -265,7 +268,7 @@ namespace ogn
             //    objRE.Global = false;
             //    FileName = objRE.Replace(FileName, ".csv");
 
-           
+
 
             //    // Get the case's parameters.
             //    objRE.Pattern = "Daily Reports for Case ";
@@ -373,7 +376,7 @@ namespace ogn
 
             //    }
 
-        
+
             //    TextNumDays.Text = Convert.ToString(g_SimulationLen / 10);
             //    TextSampleInterval.Text = Convert.ToString(20);
 
@@ -382,7 +385,7 @@ namespace ogn
             //    LabelMaxMnths.Text = "(Max months " + iMaxMnths + ")";
             //    TextNumMnths.Text = Convert.ToString(iMaxMnths / 16);
 
-       
+
 
             //=======================================================
             //Service provided by Telerik (www.telerik.com)
