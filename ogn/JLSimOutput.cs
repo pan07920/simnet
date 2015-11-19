@@ -8,11 +8,21 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Data.OleDb;
+
 namespace ogn
 {
+    
     public partial class JLSimOutput : Form
     {
+        [DllImport("DataParsingDLL.dll", EntryPoint = "Process")]
+        public static extern int ParsingProcessData(string SimInput, string TraceFile, string output);
         public string LastWorkingFolder { get; set; }
+        public int TotalSecurities { get; set; }
+        public int SimulationLength { get; set; }
+        public bool MTOperationMode { get; set; }
         private List<string[]> GetCaseInputParameters()
         {
             List<string[]> list = new List<string[]>();
@@ -49,15 +59,15 @@ namespace ogn
         private List<string[]> GetCaseMessageParameters()
         {
             List<string[]> list = new List<string[]>();
-            string[] TD = { "TotalDeposits", "Total Deposits" };
+            string[] TD = { "Total Deposits", "Total Deposits" };
             list.Add(TD);
-            string[] NoD = { "Nr.Deposits", "Number of Deposits" };
+            string[] NoD = { "Nr. Deposits", "Number of Deposits" };
             list.Add(NoD);
-            string[] TW = { "TotalWithdrawals", "Total Withdrawals" };
+            string[] TW = { "Total Withdrawals", "Total Withdrawals" };
             list.Add(TW);
-            string[] NOW = { "Nr.Withdrawals", "Number of Withdrawals" };
+            string[] NOW = { "Nr. Withdrawals", "Number of Withdrawals" };
             list.Add(NOW);
-            string[] LRS = { "Lastrandomnumberseed", "Last Random Seed" };
+            string[] LRS = { "Last random number seed", "Last Random Seed" };
             list.Add(LRS);
             return list;
         }
@@ -111,8 +121,113 @@ namespace ogn
 
         private void buttonLoad_Click(object sender, EventArgs e)
         {
+            if (listBoxCases.SelectedIndex < 0)
+                return;
             LoadSummary();
+
+            if (! MTOperationMode )
+                LoadDailyDataFile();
+            else 
+            {
+                string prefixInput = "JLMSimInput for Case ";
+                
+                string casename = listBoxCases.SelectedItem.ToString();
+                string caseinputfile = textBoxFolder.Text + @"\" + prefixInput + casename + ".txt";
+
+                string tracefile = textBoxFolder.Text + @"\" + "Trace file for Case " + casename + ".txt";
+                string outfile = textBoxFolder.Text + @"\" + "ParsedSecurityWts.csv";
+                int rtn = ParsingProcessData(caseinputfile, tracefile, outfile);
+                SamplingParsedWeightData(outfile, 20);
+
+                string returnfile = textBoxFolder.Text + @"\" + "Estimates During Case " + casename + ".csv";
+                CMEReturnEstimateData(returnfile, 100);
+            }
+
         }
+        private void LoadDailyDataFile()
+        {
+            string prefixDailyReport = "Daily Reports for Case ";
+            string casename = listBoxCases.SelectedItem.ToString();
+            string dailyreportfile = textBoxFolder.Text + @"\" + prefixDailyReport + casename + ".csv";
+            List<string> inputlines = File.ReadAllLines(dailyreportfile).ToList<string>();
+
+            for (int i = 0; i < 4; i++)
+                inputlines.RemoveAt(0);
+
+            int _security_count = TotalSecurities;
+            int _total_day_count = SimulationLength;
+            double[,] price = new double[_total_day_count, _security_count];
+            int[,] volume = new int[_total_day_count, _security_count];
+            double[,] weightmket = new double[_total_day_count, 2];
+            int[] totalvolume = new int[_total_day_count];
+            int row = 0;
+            foreach (string line in inputlines)
+            {
+                string workingline = line.Replace("1.#J", "0");
+                workingline = line.Replace("1.#IO", "0");
+                List<string> linedata = line.Split(',').ToList<string>();
+                int day = int.Parse(linedata[0]);
+
+                for (int i = 1; i <= _security_count; i++)
+                {
+                    price[row, i - 1] = double.Parse(linedata[i]);
+                    volume[row, i - 1] = int.Parse(linedata[i + 2 + _security_count]);
+                }
+                weightmket[row, 0] = double.Parse(linedata[_security_count + 1]);
+                weightmket[row, 1] = double.Parse(linedata[_security_count + 2]);
+                totalvolume[row] = int.Parse(linedata[3 + 2 * _security_count]);
+                row++;
+            }
+
+            // Copy the data to appropriate arrays,
+            // and find the maximum prices and volumes.
+            double slope = (_total_day_count - 1.0) / 99.0;
+            double maxPrice = 0;
+            double maxVolume = 0;
+            int mprv = 0;
+            double[,] prcData = new double[100, _security_count];
+            int[,] volData = new int[100, _security_count];
+            int pCol = 0;//todo taking first security for now
+            int[] indexVol = new int[100];
+            double[] op = new double[100];
+            double[] lo = new double[100];
+            double[] hi = new double[100];
+            double[] cl = new double[100];
+            double P = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                int k = (int)Math.Round(slope * i);
+                prcData[i, 0] = price[k, pCol];
+                volData[i, 0] = 0;
+
+                op[i] = price[mprv, pCol];
+                lo[i] = 1000000;
+                hi[i] = -1000000;
+                indexVol[i] = 0;
+                for (int m = mprv; m <= k; m++)
+                {
+                    volData[i, 0] = volData[i, 0] + volume[m, pCol];
+                    indexVol[i] = indexVol[i] + totalvolume[m];
+                    P = price[m, pCol];
+                    if (P > hi[i])
+                        hi[i] = P;
+
+                    if (P < lo[i])
+                        lo[i] = P;
+                }
+                cl[i] = P;
+
+                if (hi[i] > maxPrice)
+                    maxPrice = hi[i];
+
+                if (volData[i, 0] > maxVolume)
+                    maxVolume = volData[i, 0];
+                mprv = k+1 ;
+            }
+        }
+
+
+
         private void LoadSummary()
         {
             listViewCaseSummary.Items.Clear();
@@ -130,7 +245,7 @@ namespace ogn
             listViewCaseSummary.Items.Add(listviewitemfirst);
 
             List<string> inputlines = File.ReadAllLines(caseinputfile).ToList<string>();
-            List<string> linemessagelines = File.ReadAllLines(caseinputfile).ToList<string>();
+            List<string> linemessagelines = File.ReadAllLines(casemessagefile).ToList<string>();
 
             List<string[]> frominput = GetCaseInputParameters();
             List<string[]> fromMessage = GetCaseMessageParameters();
@@ -146,9 +261,14 @@ namespace ogn
                 }
                 string[] row = { param[1], val };
                 var listviewitem = new ListViewItem(row);
+                if (param[1] == "Number of Securities")
+                    TotalSecurities = int.Parse(val);
+                if (param[1] == "Simulation Length")
+                    SimulationLength = int.Parse(val);
+
                 listViewCaseSummary.Items.Add(listviewitem);
             }
-
+          
             foreach (string[] param in fromMessage)
             {
                 string val = linemessagelines.Find(delegate (string s) { return s.Contains(param[0]); });
@@ -156,243 +276,102 @@ namespace ogn
                     val = "";
                 else
                 {
-                    val = val.Split(':').ToList<string>()[1].Trim();
+                    val = val.Split(new char[] { ':', ',' }).ToList<string>().Last<string>().Trim();
                 }
+                if (param[0].Contains("Total"))
+                {
+                    Decimal amount = Decimal.Parse(val);
+                    val = String.Format(new CultureInfo("en-US"), "{0:C0}", amount); //"{0:C}" for decimal/cents
+                }
+
+                if (param[0].Contains("Nr."))
+                {
+                    int amount = int.Parse(val);
+                    val = String.Format("{0:n0}",  amount);
+                }
+
                 string[] row = { param[1], val };
                 var listviewitem = new ListViewItem(row);
                 listViewCaseSummary.Items.Add(listviewitem);
             }
+             MTOperationMode = true; //show Weight and Returns
+            string mode = inputlines.Find(delegate (string s) { return s.Contains("or that specific specs follow"); });
+            if (mode == null)
+                mode = "";
+            else
+            {
+                mode = mode.Split(new char[] { ':', ',' }).ToList<string>().Last<string>().Trim();
+            }
+            if (mode == "X" || mode == "N")
+                MTOperationMode = false;
+            if (MTOperationMode)
+            {
+                tabControl1.TabPages.Remove(tabPage2);
+                tabControl1.TabPages.Remove(tabPage3);
+            }
+            else
+            {
+                tabControl1.TabPages.Remove(tabPage4);
+                tabControl1.TabPages.Remove(tabPage5);
+            }
 
+           
+        }
+        private void SamplingParsedWeightData(string filename, int interval)
+        {
+            int _security_count = TotalSecurities; 
+            List<string> inputlines = File.ReadAllLines(filename).ToList<string>();
+            int totalline = inputlines.Count;
 
+            int samplecount = totalline / interval;
+            int[] sampleindex = new int[samplecount];
+            double[,] sampledata = new double[samplecount, _security_count + 1];
+            for (int i = 0; i < samplecount; i++)
+            {
+                List<string> linedata  = inputlines[i* interval].Split(',').ToList<string>();
+                sampleindex[i] = int.Parse(linedata[0]);
+                for(int j = 0; j < _security_count + 1; j++)
+                    sampledata[i,j] = double.Parse(linedata[j+1]);
+            }
+        }
 
-            //var SimulationLenth = from line in lines
-            //                      where line.Contains("Length of Simulation (in days)")
-            //                      select (line.Split(':').ToList<string>()[1]).Single();
+        private void CMEReturnEstimateData(string filename, int numberofmonth)
+        {
+            //For CME cases, Return Chart, all securities, by month
+            int _security_count = TotalSecurities;
+            List<string> inputlines = File.ReadAllLines(filename).ToList<string>();
+            int totalline = inputlines.Count;
 
-            //string NumOfSecurities = "";
+            double[,] estimatereturndata = new double[numberofmonth, _security_count + 1];
+            for (int i = 0; i < numberofmonth; i++)
+            {
+                List<string> linedata = inputlines[i + 2].Split(',').ToList<string>();
+                for (int j = 0; j < _security_count + 1; j++)
+                    estimatereturndata[i, j] = double.Parse(linedata[j + 1]);
+            }
 
-            //    // Declarations.
-            //    short j = 0;
-            //    short i = 0;
-            //    short k = 0;
-            //    string FileName = null;
-            //    string FileLine = null;
-            //    string SimLength = null;
-            //    string FormatStr = null;
-            //    string nDaysKept = null;
-            //    string nFactors = null;
-            //    string nMonthsKept = null;
-            //    string ds = null;
-            //    string mILS = null;
-            //    string mMLS = null;
-            //    string uptickRule = null;
-            //    string rebateFraction = null;
-            //    object FSys = null;
-            //    object TStream = null;
-
-            //    object DailyData = null;
-            //    object theArray = null;
-            //    int LastRandomSeed = 0;
-            //    string TotalDeposits = null;
-            //    string NumberDeposits = null;
-            //    string TotalWithdrawals = null;
-            //    string NumberWithdrawals = null;
-            //    object title = null;
-            //    object msg = null;
-            //    object style = null;
-            //    object response = null;
-
-            //    const short ForReading = 1;
-
-
-
-            //    // Get the user's choice of case.
-            //    CaseName = VB6.GetItemString(lbChooseCase, CaseNumber);
-            //    FileName = FileNames(CaseNumber);
-            //    DailyReportsFilename = "Daily Reports for Case " + CaseName;
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object FSys.OpenTextFile. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    TStream = FSys.OpenTextFile(FileName, ForReading);
-
-            //    // Get the case's parameters from the carbon copy of the JLMSimInput file.
-            //    SimLength = Convert.ToString(0);
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object nSecurities. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    nSecurities = 0;
-            //    nStatisticians = 0;
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object nAnalysts. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    nAnalysts = 0;
-            //    nTraders = 0;
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object nInvestors. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    nInvestors = 0;
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object TStream.AtEndOfStream. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    while ((TStream.AtEndOfStream == false))
-            //    {
-            //        //UPGRADE_WARNING: Couldn't resolve default property of object TStream.readline. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //        FileLine = TStream.readline;;
-            //string[] SimLength = "Length of Simulation (in days)";
-            //string[] SECURITIES = "Securities (other than cash and borrowing)";
-            //int g_SimulationLen = Convert.ToInt16(SimLength);
-            //string[] Securities = "Securities (other than cash and borrowing)";
-            //   // int g_NumSecurites = nSecurities;
-            //string[] Statisticians = "   Statisticians";
-            //int nStatisticians = Convert.ToInt16(Statisticians);
-            //string[] Analysts = "   Portfolio Analysts";
-            //string[] Investors = "Investor Templates (types of investors)";
-            //string[] Trader = "Trader Templates (types of traders)";
-            //int nTrader = Convert.ToInt16(Trader);
-            //string[] Factor = "price series before the start of simulation";
-            //string[] DayKept = "Nr. of Days Data Kept for statisticians";
-            //string[] nMonthsKept = "Nr. of Months Data Kept for statisticians";
-            //string[] mILS = "Max Initial Sum of Long + |Short|";
-            //string[] mMLS = "Max Mark-to-Market Sum of Long + |Short|";
-            //string[] ds = "(statisticians use simulation's own history)";//"Endogenous", "Exogenous"
-            //string[] uptickRule = "Can only short on uptick?  Y or N";// N --No else Yes
-            //string[] rebateFraction = "Short rebate fraction";
-            //string[] g_eMTOperationMode = "or that specific specs follow";//: X, or : N =>0, else 1
-
-            //string[] a = "Lastrandomnumberseed";
-            //string[] b = "TotalDeposits";
-            //string[] c = "TotalWithdrawals";
-            //string[] d = "Nr.Deposits";
-            //string[] e = "Nr.Withdrawals";
-
-
-            //    }
-            //    //UPGRADE_NOTE: Object TStream may not be destroyed until it is garbage collected. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6E35BFF6-CD74-4B09-9689-3E1A43DF8969"'
-            //    TStream = null;
-
-            //    // Construct the name of the case data file.
-            //    objRE.Pattern = "JLMSimInput for Case ";
-            //    objRE.Global = false;
-            //    FileName = objRE.Replace(FileName, "Daily Reports for Case ");
-            //    objRE.Pattern = ".txt";
-            //    objRE.Global = false;
-            //    FileName = objRE.Replace(FileName, ".csv");
-
-
-
-            //    // Get the case's parameters.
-            //    objRE.Pattern = "Daily Reports for Case ";
-            //    objRE.Global = false;
-            //    FileName = objRE.Replace(FileName, "Messages from Case ");
-
-            //    flxParameters.Rows = 20;
-            //    FormatStr = ";Case Name|";
-            //    FormatStr = FormatStr + "Simulation Length|";
-            //    FormatStr = FormatStr + "Number of Securities|";
-            //    FormatStr = FormatStr + "Number of Statisticians|";
-            //    FormatStr = FormatStr + "Number of Analysts|";
-            //    FormatStr = FormatStr + "Types of Investors|";
-            //    FormatStr = FormatStr + "Types of Traders|";
-            //    FormatStr = FormatStr + "Number of Factors|";
-            //    FormatStr = FormatStr + "Number of Days Kept|";
-            //    FormatStr = FormatStr + "Number of Months Kept|";
-            //    FormatStr = FormatStr + "Max Initial L+abs(S)|";
-            //    FormatStr = FormatStr + "Max Maintenance L+abs(S)|";
-            //    FormatStr = FormatStr + "Data Source|";
-            //    FormatStr = FormatStr + "Uptick Rule|";
-            //    FormatStr = FormatStr + "Rebate Fraction|";
-            //    FormatStr = FormatStr + "Total Deposits|";
-            //    FormatStr = FormatStr + "Number of Deposits|";
-            //    FormatStr = FormatStr + "Total Withdrawals|";
-            //    FormatStr = FormatStr + "Number of Withdrawals|";
-            //    FormatStr = FormatStr + "Last Random Seed";
-            //    flxParameters.FormatString = FormatStr;
-
-
-
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object FSys.OpenTextFile. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    TStream = FSys.OpenTextFile(FileName, ForReading);
-            //    //UPGRADE_WARNING: Couldn't resolve default property of object TStream.AtEndOfStream. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //    while ((TStream.AtEndOfStream == false))
-            //    {
-            //        //UPGRADE_WARNING: Couldn't resolve default property of object TStream.readline. Click for more: 'ms-help://MS.VSExpressCC.v80/dv_commoner/local/redirect.htm?keyword="6A50421D-15FE-4896-8A1B-2EC21E9037B2"'
-            //        FileLine = TStream.readline;
-            //        FileLine = Strings.Replace(FileLine, " ", "");
-
-            //        i = 0;
-            //        i = Strings.InStr(FileLine, "Lastrandomnumberseed");
-            //        if ((i > 0))
-            //        {
-            //            i = Strings.InStr(FileLine, ":");
-            //            LastRandomSeed = Convert.ToInt32(Strings.Mid(FileLine, i + 1));
-            //            flxParameters.Row = 19;
-            //            flxParameters.Col = 1;
-            //            flxParameters.Text = Convert.ToString(LastRandomSeed);
-            //            flxParameters.CellAlignment = MSFlexGridLib.AlignmentSettings.flexAlignLeftBottom;
-            //        }
-
-            //        i = Strings.InStr(FileLine, "TotalDeposits");
-            //        if ((i > 0))
-            //        {
-            //            i = Strings.InStr(FileLine, ",");
-            //            TotalDeposits = Strings.Mid(FileLine, i + 2);
-            //            TotalDeposits = "$" + InsertCommas(TotalDeposits);
-            //            flxParameters.Row = 15;
-            //            flxParameters.Col = 1;
-            //            flxParameters.CellAlignment = MSFlexGridLib.AlignmentSettings.flexAlignLeftBottom;
-            //            flxParameters.Text = TotalDeposits;
-            //        }
-
-            //        i = Strings.InStr(FileLine, "TotalWithdrawals");
-            //        if ((i > 0))
-            //        {
-            //            i = Strings.InStr(FileLine, ",");
-            //            TotalWithdrawals = Strings.Mid(FileLine, i + 2);
-            //            i = Strings.InStr(TotalWithdrawals, "-");
-            //            if ((i > 0))
-            //            {
-            //                TotalWithdrawals = Strings.Mid(TotalWithdrawals, i + i);
-            //            }
-            //            TotalWithdrawals = "$" + InsertCommas(TotalWithdrawals);
-            //            flxParameters.Row = 17;
-            //            flxParameters.Col = 1;
-            //            flxParameters.CellAlignment = MSFlexGridLib.AlignmentSettings.flexAlignLeftBottom;
-            //            flxParameters.Text = TotalWithdrawals;
-            //        }
-
-            //        i = Strings.InStr(FileLine, "Nr.Deposits");
-            //        if ((i > 0))
-            //        {
-            //            i = Strings.InStr(FileLine, ",");
-            //            NumberDeposits = Strings.Mid(FileLine, i + 2);
-            //            NumberDeposits = InsertCommas(NumberDeposits);
-            //            flxParameters.Row = 16;
-            //            flxParameters.Col = 1;
-            //            flxParameters.CellAlignment = MSFlexGridLib.AlignmentSettings.flexAlignLeftBottom;
-            //            flxParameters.Text = NumberDeposits;
-            //        }
-
-            //        i = Strings.InStr(FileLine, "Nr.Withdrawals");
-            //        if ((i > 0))
-            //        {
-            //            i = Strings.InStr(FileLine, ",");
-            //            NumberWithdrawals = Strings.Mid(FileLine, i + 2);
-            //            NumberWithdrawals = InsertCommas(NumberWithdrawals);
-            //            flxParameters.Row = 18;
-            //            flxParameters.Col = 1;
-            //            flxParameters.CellAlignment = MSFlexGridLib.AlignmentSettings.flexAlignLeftBottom;
-            //            flxParameters.Text = NumberWithdrawals;
-            //        }
-
-            //    }
-
-
-            //    TextNumDays.Text = Convert.ToString(g_SimulationLen / 10);
-            //    TextSampleInterval.Text = Convert.ToString(20);
-
-            //    short iMaxMnths = 0;
-            //    iMaxMnths = g_SimulationLen / 5;
-            //    LabelMaxMnths.Text = "(Max months " + iMaxMnths + ")";
-            //    TextNumMnths.Text = Convert.ToString(iMaxMnths / 16);
-
-
-
-            //=======================================================
-            //Service provided by Telerik (www.telerik.com)
-            //Conversion powered by NRefactory.
-            //Twitter: @telerik
-            //Facebook: facebook.com/telerik
-            //=======================================================
+            chartReturns.Series.Clear();
+            for (int i = 0; i < TotalSecurities; i++)
+            {
+                chartReturns.Series.Add("S" + i.ToString(), DevExpress.XtraCharts.ViewType.Line);
+            }
+            double ymax = 10, ymin = 10;
+            double pointvalue;
+            for (int m = 0; m < numberofmonth; m++)
+            {
+                for (int s = 0; s < TotalSecurities; s++)
+                {
+                    pointvalue = 100 * estimatereturndata[m, s];
+                    ymax = Math.Max(ymax, pointvalue);
+                    ymin = Math.Max(ymin, pointvalue);
+                    chartReturns.Series[s].Points.Add(new DevExpress.XtraCharts.SeriesPoint(m, 100 * estimatereturndata[m, s]));
+                }
+            }
+            ymax = Math.Ceiling(ymax);
+            ymin = Math.Floor(ymin);
+            //chartReturns.Diagram .AxisY.VisualRange.Auto = false;
+            //xyDiagram1.AxisY.VisualRange.MaxValueSerializable = "5.6";
+            //xyDiagram1.AxisY.VisualRange.MinValueSerializable = "0";
 
         }
 
