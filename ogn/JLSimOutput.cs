@@ -14,7 +14,7 @@ using System.Data.OleDb;
 
 namespace ogn
 {
-    
+
     public partial class JLSimOutput : Form
     {
         [DllImport("DataParsingDLL.dll", EntryPoint = "Process")]
@@ -72,9 +72,14 @@ namespace ogn
             return list;
         }
 
+        double[,] _price;
+        int[,] _volume;
+        double[,] _weightmarket;
+        int[] _totalvolume;
+
         public JLSimOutput()
         {
-         
+
             InitializeComponent();
         }
 
@@ -107,7 +112,7 @@ namespace ogn
                 {
                     listBoxCases.Items.Add(f.File);
                 }
-               
+
             }
             catch (UnauthorizedAccessException UAEx)
             {
@@ -125,23 +130,30 @@ namespace ogn
                 return;
             LoadSummary();
 
-            if (! MTOperationMode )
+            if (!MTOperationMode)
+            {
                 LoadDailyDataFile();
-            else 
+                RefreshIndicesChart();
+            }
+            else
             {
                 string prefixInput = "JLMSimInput for Case ";
-                
+
                 string casename = listBoxCases.SelectedItem.ToString();
                 string caseinputfile = textBoxFolder.Text + @"\" + prefixInput + casename + ".txt";
 
                 string tracefile = textBoxFolder.Text + @"\" + "Trace file for Case " + casename + ".txt";
                 string outfile = textBoxFolder.Text + @"\" + "ParsedSecurityWts.csv";
                 int rtn = ParsingProcessData(caseinputfile, tracefile, outfile);
+
                 SamplingParsedWeightData(outfile, 20);
 
                 string returnfile = textBoxFolder.Text + @"\" + "Estimates During Case " + casename + ".csv";
                 CMEReturnEstimateData(returnfile, 100);
             }
+
+            for (int i = 0; i < TotalSecurities; i++)
+                checkedlbxSecurities.Items.Add("Security " + i.ToString());
 
         }
         private void LoadDailyDataFile()
@@ -154,12 +166,12 @@ namespace ogn
             for (int i = 0; i < 4; i++)
                 inputlines.RemoveAt(0);
 
-            int _security_count = TotalSecurities;
-            int _total_day_count = SimulationLength;
-            double[,] price = new double[_total_day_count, _security_count];
-            int[,] volume = new int[_total_day_count, _security_count];
-            double[,] weightmket = new double[_total_day_count, 2];
-            int[] totalvolume = new int[_total_day_count];
+            int security_count = TotalSecurities;
+            int total_day_count = SimulationLength;
+            _price = new double[total_day_count, security_count];
+            _volume = new int[total_day_count, security_count];
+            _weightmarket = new double[total_day_count, 2];
+            _totalvolume = new int[total_day_count];
             int row = 0;
             foreach (string line in inputlines)
             {
@@ -168,27 +180,34 @@ namespace ogn
                 List<string> linedata = line.Split(',').ToList<string>();
                 int day = int.Parse(linedata[0]);
 
-                for (int i = 1; i <= _security_count; i++)
+                for (int i = 1; i <= security_count; i++)
                 {
-                    price[row, i - 1] = double.Parse(linedata[i]);
-                    volume[row, i - 1] = int.Parse(linedata[i + 2 + _security_count]);
+                    _price[row, i - 1] = double.Parse(linedata[i]);
+                    _volume[row, i - 1] = int.Parse(linedata[i + 2 + security_count]);
                 }
-                weightmket[row, 0] = double.Parse(linedata[_security_count + 1]);
-                weightmket[row, 1] = double.Parse(linedata[_security_count + 2]);
-                totalvolume[row] = int.Parse(linedata[3 + 2 * _security_count]);
+                _weightmarket[row, 0] = double.Parse(linedata[security_count + 1]);
+                _weightmarket[row, 1] = double.Parse(linedata[security_count + 2]);
+                _totalvolume[row] = int.Parse(linedata[3 + 2 * security_count]);
                 row++;
             }
 
+        }
+        private void RefreshIndicesChart()
+        {
+            int security_count = TotalSecurities;
+            int total_day_count = SimulationLength;
+
             // Copy the data to appropriate arrays,
             // and find the maximum prices and volumes.
-            double slope = (_total_day_count - 1.0) / 99.0;
+            double slope = (total_day_count - 1.0) / 99.0;
             double maxPrice = 0;
             double maxVolume = 0;
             int mprv = 0;
-            double[,] prcData = new double[100, _security_count];
-            int[,] volData = new int[100, _security_count];
+            double[,] prcData = new double[100, security_count];
+            int[,] volData = new int[100, security_count];
             int pCol = 0;//todo taking first security for now
             int[] indexVol = new int[100];
+            double[,] indexPrice = new double[100, 2];
             double[] op = new double[100];
             double[] lo = new double[100];
             double[] hi = new double[100];
@@ -197,18 +216,20 @@ namespace ogn
             for (int i = 0; i < 100; i++)
             {
                 int k = (int)Math.Round(slope * i);
-                prcData[i, 0] = price[k, pCol];
+                prcData[i, 0] = _price[k, pCol];
                 volData[i, 0] = 0;
 
-                op[i] = price[mprv, pCol];
+                op[i] = _price[mprv, pCol];
                 lo[i] = 1000000;
                 hi[i] = -1000000;
                 indexVol[i] = 0;
+                indexPrice[i, 0] = _weightmarket[k, 0];
+                indexPrice[i, 1] = _weightmarket[k, 1];
                 for (int m = mprv; m <= k; m++)
                 {
-                    volData[i, 0] = volData[i, 0] + volume[m, pCol];
-                    indexVol[i] = indexVol[i] + totalvolume[m];
-                    P = price[m, pCol];
+                    volData[i, 0] = volData[i, 0] + _volume[m, pCol];
+                    indexVol[i] = indexVol[i] + _totalvolume[m];
+                    P = _price[m, pCol];
                     if (P > hi[i])
                         hi[i] = P;
 
@@ -222,8 +243,80 @@ namespace ogn
 
                 if (volData[i, 0] > maxVolume)
                     maxVolume = volData[i, 0];
-                mprv = k+1 ;
+                mprv = k + 1;
             }
+
+            ///////////////////
+            chartIndicesPrice.Series.Clear();
+            chartIndicesPrice.Series.Add("Equally Weighted", DevExpress.XtraCharts.ViewType.Line);
+            chartIndicesPrice.Series.Add("Capitalization Weighted", DevExpress.XtraCharts.ViewType.Line);
+
+            double ymax = 10, ymin = 10;
+            double ewvalue;
+            double cwvalue;
+
+            for (int i = 0; i < 100; i++)
+            {
+                ewvalue = indexPrice[i, 0];
+                cwvalue = indexPrice[i, 1];
+                ymax = Math.Max(ymax, ewvalue);
+                ymin = Math.Min(ymin, ewvalue);
+                ymax = Math.Max(ymax, cwvalue);
+                ymin = Math.Min(ymin, cwvalue);
+
+                chartIndicesPrice.Series[0].Points.Add(new DevExpress.XtraCharts.SeriesPoint(i, ewvalue));
+                chartIndicesPrice.Series[1].Points.Add(new DevExpress.XtraCharts.SeriesPoint(i, cwvalue));
+            }
+
+            ymax = Math.Ceiling(ymax);
+            ymin = Math.Floor(ymin);
+            DevExpress.XtraCharts.XYDiagram diagram = (DevExpress.XtraCharts.XYDiagram)chartIndicesPrice.Diagram;
+            // Enable the diagram's scrolling.
+            diagram.EnableAxisXScrolling = true;
+            diagram.EnableAxisYScrolling = true;
+
+
+            // Define the whole range for the Y-axis. 
+            diagram.AxisY.WholeRange.Auto = false;
+            diagram.AxisY.WholeRange.SetMinMaxValues(ymin, ymax);
+
+            diagram.AxisX.VisualRange.AutoSideMargins = false;
+            diagram.AxisY.VisualRange.AutoSideMargins = false;
+
+
+            /////////////////// Chart Indices Tab (Price Indices and  Volume)
+            chartIndicesVolume.Series.Clear();
+            chartIndicesVolume.Series.Add("Volume", DevExpress.XtraCharts.ViewType.Bar);
+
+            double ymaxv = indexVol[0] / 1000000, yminv = indexVol[0] / 1000000;
+            int volumedata;
+
+            for (int i = 0; i < indexVol.Length; i++)
+            {
+                volumedata = indexVol[i] / 1000000;
+
+                ymaxv = Math.Max(ymaxv, volumedata);
+                yminv = Math.Min(yminv, volumedata);
+
+                chartIndicesVolume.Series[0].Points.Add(new DevExpress.XtraCharts.SeriesPoint(i * 40, volumedata));
+            }
+
+            ymax = Math.Ceiling(ymax);
+            ymin = Math.Floor(ymin);
+            DevExpress.XtraCharts.XYDiagram diagramvol = (DevExpress.XtraCharts.XYDiagram)chartIndicesVolume.Diagram;
+            // Enable the diagram's scrolling.
+            diagramvol.EnableAxisXScrolling = false;
+            diagramvol.EnableAxisYScrolling = true;
+
+
+            // Define the whole range for the Y-axis. 
+            //diagramvol.AxisY.WholeRange.Auto = false;
+            //diagramvol.AxisY.WholeRange.SetMinMaxValues(ymin, ymax);
+
+            diagramvol.AxisX.VisualRange.AutoSideMargins = false;
+            diagramvol.AxisY.VisualRange.AutoSideMargins = false;
+            diagramvol.AxisX.VisualRange.SideMarginsValue = 0;
+
         }
 
 
@@ -268,7 +361,7 @@ namespace ogn
 
                 listViewCaseSummary.Items.Add(listviewitem);
             }
-          
+
             foreach (string[] param in fromMessage)
             {
                 string val = linemessagelines.Find(delegate (string s) { return s.Contains(param[0]); });
@@ -287,14 +380,14 @@ namespace ogn
                 if (param[0].Contains("Nr."))
                 {
                     int amount = int.Parse(val);
-                    val = String.Format("{0:n0}",  amount);
+                    val = String.Format("{0:n0}", amount);
                 }
 
                 string[] row = { param[1], val };
                 var listviewitem = new ListViewItem(row);
                 listViewCaseSummary.Items.Add(listviewitem);
             }
-             MTOperationMode = true; //show Weight and Returns
+            MTOperationMode = true; //show Weight and Returns
             string mode = inputlines.Find(delegate (string s) { return s.Contains("or that specific specs follow"); });
             if (mode == null)
                 mode = "";
@@ -315,11 +408,11 @@ namespace ogn
                 tabControl1.TabPages.Remove(tabPage5);
             }
 
-           
+
         }
         private void SamplingParsedWeightData(string filename, int interval)
         {
-            int _security_count = TotalSecurities; 
+            int _security_count = TotalSecurities;
             List<string> inputlines = File.ReadAllLines(filename).ToList<string>();
             int totalline = inputlines.Count;
 
@@ -328,11 +421,46 @@ namespace ogn
             double[,] sampledata = new double[samplecount, _security_count + 1];
             for (int i = 0; i < samplecount; i++)
             {
-                List<string> linedata  = inputlines[i* interval].Split(',').ToList<string>();
+                List<string> linedata = inputlines[i * interval].Split(',').ToList<string>();
                 sampleindex[i] = int.Parse(linedata[0]);
-                for(int j = 0; j < _security_count + 1; j++)
-                    sampledata[i,j] = double.Parse(linedata[j+1]);
+                for (int j = 0; j < _security_count + 1; j++)
+                    sampledata[i, j] = double.Parse(linedata[j + 1]);
             }
+
+            chartWeights.Series.Clear();
+            for (int i = 0; i < TotalSecurities; i++)
+            {
+                chartWeights.Series.Add("S" + i.ToString(), DevExpress.XtraCharts.ViewType.Line);
+            }
+            chartWeights.Series.Add("Cash", DevExpress.XtraCharts.ViewType.Line);
+
+            double ymax = 10, ymin = 10;
+            double pointvalue;
+            for (int m = 0; m < 40; m++)
+            {
+                for (int s = 0; s < TotalSecurities + 1; s++)
+                {
+                    pointvalue = 100 * sampledata[m, s];
+                    ymax = Math.Max(ymax, pointvalue);
+                    ymin = Math.Min(ymin, pointvalue);
+                    chartWeights.Series[s].Points.Add(new DevExpress.XtraCharts.SeriesPoint(sampleindex[m], 100 * sampledata[m, s]));
+                }
+            }
+            ymax = Math.Ceiling(ymax);
+            ymin = Math.Floor(ymin);
+            DevExpress.XtraCharts.XYDiagram diagram = (DevExpress.XtraCharts.XYDiagram)chartWeights.Diagram;
+            // Enable the diagram's scrolling.
+            diagram.EnableAxisXScrolling = true;
+            diagram.EnableAxisYScrolling = true;
+
+
+            // Define the whole range for the Y-axis. 
+            diagram.AxisY.WholeRange.Auto = false;
+            diagram.AxisY.WholeRange.SetMinMaxValues(ymin, ymax);
+
+            diagram.AxisX.VisualRange.AutoSideMargins = false;
+            diagram.AxisY.VisualRange.AutoSideMargins = false;
+
         }
 
         private void CMEReturnEstimateData(string filename, int numberofmonth)
@@ -341,7 +469,7 @@ namespace ogn
             int _security_count = TotalSecurities;
             List<string> inputlines = File.ReadAllLines(filename).ToList<string>();
             int totalline = inputlines.Count;
-
+            totalline = 800;
             double[,] estimatereturndata = new double[numberofmonth, _security_count + 1];
             for (int i = 0; i < numberofmonth; i++)
             {
@@ -363,15 +491,35 @@ namespace ogn
                 {
                     pointvalue = 100 * estimatereturndata[m, s];
                     ymax = Math.Max(ymax, pointvalue);
-                    ymin = Math.Max(ymin, pointvalue);
+                    ymin = Math.Min(ymin, pointvalue);
                     chartReturns.Series[s].Points.Add(new DevExpress.XtraCharts.SeriesPoint(m, 100 * estimatereturndata[m, s]));
                 }
             }
             ymax = Math.Ceiling(ymax);
             ymin = Math.Floor(ymin);
-            //chartReturns.Diagram .AxisY.VisualRange.Auto = false;
-            //xyDiagram1.AxisY.VisualRange.MaxValueSerializable = "5.6";
-            //xyDiagram1.AxisY.VisualRange.MinValueSerializable = "0";
+            DevExpress.XtraCharts.XYDiagram diagram = (DevExpress.XtraCharts.XYDiagram)chartReturns.Diagram;
+            // Enable the diagram's scrolling.
+            diagram.EnableAxisXScrolling = true;
+            diagram.EnableAxisYScrolling = true;
+
+            //// Define the whole range for the X-axis. 
+            //diagram.AxisX.WholeRange.Auto = false;
+            //diagram.AxisX.WholeRange.SetMinMaxValues("A", "D");
+
+            //// Disable the side margins 
+            //// (this has an effect only for certain view types).
+            //diagram.AxisX.VisualRange.AutoSideMargins = false;
+
+            //// Limit the visible range for the X-axis.
+            //diagram.AxisX.VisualRange.Auto = false;
+            //diagram.AxisX.VisualRange.SetMinMaxValues("B", "C");
+
+            // Define the whole range for the Y-axis. 
+            diagram.AxisY.WholeRange.Auto = false;
+            diagram.AxisY.WholeRange.SetMinMaxValues(ymin, ymax);
+
+            diagram.AxisX.VisualRange.AutoSideMargins = false;
+            diagram.AxisY.VisualRange.AutoSideMargins = false;
 
         }
 
@@ -379,6 +527,125 @@ namespace ogn
         {
             LastWorkingFolder = @"C:\JLMSim";
             textBoxFolder.Text = LastWorkingFolder;
+        }
+
+        private void checkedlbxSecurities_ItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            List<string> checkedItems = new List<string>();
+            foreach (var item in checkedlbxSecurities.CheckedItems)
+                checkedItems.Add(item.ToString());
+
+            if (e.NewValue == CheckState.Checked)
+                checkedItems.Add(checkedlbxSecurities.Items[e.Index].ToString());
+            chartSecurityPrice.Series.Clear();
+            foreach (string item in checkedItems)
+            {
+                if (checkedItems.Count == 1)
+                    RefreshSecurityPriceVolumeChart(item);
+                else
+                    AddSecurityPriceChart(item);
+            }
+
+            if (checkedlbxSecurities.CheckedItems.Count == 1 && e.NewValue == CheckState.Unchecked)
+            {
+                bool check = true;
+            }
+            // The collection is about to be emptied: there's just one item checked, and it's being unchecked at this moment
+            else
+            { // The collection will not be empty once this click is handled
+
+            }
+        }
+        private void RefreshSecurityPriceVolumeChart(string security)
+        {
+            int security_index = int.Parse(security.Replace("Security", "").Trim());
+
+            int security_count = TotalSecurities;
+
+            if(security_index >= security_count-1)
+                return;
+
+            int total_day_count = SimulationLength;
+
+            // Copy the data to appropriate arrays,
+            // and find the maximum prices and volumes.
+            double slope = (total_day_count - 1.0) / 99.0;
+            double maxPrice = 0;
+            double maxVolume = 0;
+            int mprv = 0;
+
+            int[] volData = new int[100];
+            int pCol = security_index;//todo taking first security for now
+            int[] indexVol = new int[100];
+            double[,] indexPrice = new double[100, 2];
+            double[] op = new double[100];
+            double[] lo = new double[100];
+            double[] hi = new double[100];
+            double[] cl = new double[100];
+            double P = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                int k = (int)Math.Round(slope * i);
+                volData[i] = 0;
+
+                op[i] = _price[mprv, pCol];
+                lo[i] = 1000000;
+                hi[i] = -1000000;
+                indexVol[i] = 0;
+                indexPrice[i, 0] = _weightmarket[k, 0];
+                indexPrice[i, 1] = _weightmarket[k, 1];
+                for (int m = mprv; m <= k; m++)
+                {
+                    volData[i] = volData[i] + _volume[m, pCol];
+                    indexVol[i] = indexVol[i] + _totalvolume[m];
+                    P = _price[m, pCol];
+                    if (P > hi[i])
+                        hi[i] = P;
+
+                    if (P < lo[i])
+                        lo[i] = P;
+                }
+                cl[i] = P;
+
+                if (hi[i] > maxPrice)
+                    maxPrice = hi[i];
+
+                if (volData[i] > maxVolume)
+                    maxVolume = volData[i];
+                mprv = k + 1;
+            }
+
+            ///////////////////
+            chartSecurityPrice.Series.Clear();
+            chartSecurityPrice.Series.Add(security, DevExpress.XtraCharts.ViewType.Stock);
+           
+  
+            for (int i = 0; i < 100; i++)
+            {
+             
+
+                chartSecurityPrice.Series[0].Points.Add(new DevExpress.XtraCharts.SeriesPoint(i, new object[] { lo[i], hi[i], op[i], cl[i] }));
+
+            }
+
+
+
+
+            ///////////////////// Chart security volume bar chart
+            chartSecurityVolume.Series.Clear();
+            chartSecurityVolume.Series.Add("Volume", DevExpress.XtraCharts.ViewType.Bar);
+
+            int volumedata;
+            for (int i = 0; i < 100; i++)
+            {
+                volumedata = volData[i] ;
+
+                chartSecurityVolume.Series[0].Points.Add(new DevExpress.XtraCharts.SeriesPoint(i, volumedata));
+            }
+
+        }
+        private void AddSecurityPriceChart(string security)
+        {
         }
     }
 }
